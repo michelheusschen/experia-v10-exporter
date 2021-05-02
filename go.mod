@@ -1,4 +1,4 @@
-module github.com/wouter0100/experia-v10-exporter
+module github.com/bajansen/experia-v10-exporter
 
 go 1.13
 

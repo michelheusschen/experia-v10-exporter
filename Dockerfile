@@ -20,7 +20,7 @@ RUN echo "-- TEST" \
  && upx -9 /go/bin/experia-v10-exporter
 
 FROM busybox
-LABEL maintainer="Wouter van Os <wouter0100@gmail.com>"
+LABEL maintainer="Bernardus Jansen"
 
 COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 COPY --from=builder /go/bin/experia-v10-exporter /bin/experia-v10-exporter

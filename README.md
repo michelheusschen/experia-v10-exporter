@@ -1,11 +1,13 @@
 # experia-v10-exporter
 A [prometheus](https://prometheus.io) exporter for getting some metrics of an Experia Box v10 (H369A)
 
+Disclaimer: this is the first thing I ever did in Go and I have no clue what I'm doing
+
 ## Installation
 If you have a working Go installation, getting the binary should be as simple as
 
 ```
-go get github.com/wouter0100/experia-v10-exporter
+go get github.com/bajansen/experia-v10-exporter
 ```
 
 ## Usage
