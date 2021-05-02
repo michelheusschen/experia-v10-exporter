@@ -27,8 +27,11 @@ const (
 	loginUrl = "http://%s"
 	logoutUrl = "http://%s"
 
-	ethernetPageUrl = "http://%s/getpage.lua?pid=123&nextpage=Internet_InternetStatusforRoute_t.lp&Menu3Location=0&_=1583884785730"
-	ethernetMetricsUrl = "http://%s/common_page/internet_eth_interface_lua.lua"
+	ethernetPageUrl = "http://%s/getpage.lua?pid=123&nextpage=Localnet_LAN_LocalnetStatus_t.lp&Menu3Location=0&_=1611056303063"
+	ethernetMetricsUrl = "http://%s/common_page/lanStatus_lua.lua"
+
+	dslPageUrl = "http://%s/getpage.lua?pid=123&nextpage=Internet_InternetStatusforRoute_DSL_t.lp&Menu3Location=0"
+	dslMetricsUrl = "http://%s/common_page/internet_dsl_interface_lua.lua"
 )
 
 var (
@@ -36,6 +39,20 @@ var (
 		metricPrefix+"ethernet",
 		"All ethernet (eth) related metadata.",
 		[]string{"value"}, nil)
+
+	dslDesc = prometheus.NewDesc(
+		metricPrefix+"dsl",
+		"All dsl related metadata.",
+		[]string{"value"}, nil)
+	
+	ifInOctets = prometheus.NewDesc(
+			"ifInOctets",
+			"The total number of octets received on the interface",
+		[]string{"ifName", "ifAlias"}, nil)
+	ifOutOctets = prometheus.NewDesc(
+			"ifOutOctets",
+			"The total number of octets transmitted out of the interface",
+		[]string{"ifName", "ifAlias"}, nil)
 )
 
 type experiav10Collector struct {
@@ -78,7 +95,9 @@ func (c *experiav10Collector) Describe(ch chan<- *prometheus.Desc) {
 	c.upMetric.Describe(ch)
 	c.authErrorsMetric.Describe(ch)
 	c.scrapeErrorsMetric.Describe(ch)
-	ch <- ethernetDesc
+	ch <- ifInOctets
+	ch <- ifOutOctets
+	ch <- dslDesc
 }
 
 func (c *experiav10Collector) Collect(ch chan<- prometheus.Metric) {
@@ -106,7 +125,7 @@ func (c *experiav10Collector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func (c *experiav10Collector) login(ch chan<- prometheus.Metric) error {
-	_, err := c.client.Get(fmt.Sprintf(loginUrl, c.ip.String()))
+	loginPageRequest, err := c.client.Get(fmt.Sprintf(loginUrl, c.ip.String()))
 	if err != nil {
 		return err
 	}
@@ -141,6 +160,10 @@ func (c *experiav10Collector) login(ch chan<- prometheus.Metric) error {
 		return err
 	}
 
+	defer loginPageRequest.Body.Close()
+	defer tokenRequest.Body.Close()
+	defer loginRequest.Body.Close()
+
 	body, _ := ioutil.ReadAll(loginRequest.Body)
 
 	if strings.Contains(string(body), "loginWrapper") {
@@ -156,10 +179,12 @@ func (c *experiav10Collector) logout(ch chan<- prometheus.Metric) error {
 	logoutParams.Set("IF_LanguageSwitch", "")
 	logoutParams.Set("IF_ModeSwitch", "")
 
-	_, err := c.client.PostForm(fmt.Sprintf(logoutUrl, c.ip.String()), logoutParams)
+	logoutRequest, err := c.client.PostForm(fmt.Sprintf(logoutUrl, c.ip.String()), logoutParams)
 	if err != nil {
 		return err
 	}
+
+	logoutRequest.Body.Close()
 
 	c.client.Jar, _ = cookiejar.New(nil)
 
@@ -168,7 +193,52 @@ func (c *experiav10Collector) logout(ch chan<- prometheus.Metric) error {
 
 
 func (c *experiav10Collector) scrape(ch chan<- prometheus.Metric) error {
-	_, err := c.client.Get(fmt.Sprintf(ethernetPageUrl, c.ip.String()))
+	// For some reason the page containing the actual data will only contain data
+	// after this page is loaded first
+	dslPageRequest, err := c.client.Get(fmt.Sprintf(dslPageUrl, c.ip.String()))
+	if err != nil {
+		return err
+	}
+
+	dslMetricsRequest, err := c.client.Get(fmt.Sprintf(dslMetricsUrl, c.ip.String()))
+	if err != nil {
+		return err
+	}
+
+	defer dslPageRequest.Body.Close()
+	defer dslMetricsRequest.Body.Close()
+
+	dslMetricsData, err := ioutil.ReadAll(dslMetricsRequest.Body)
+	if err != nil {
+		return err
+	}
+
+	type dslMetricsStruct struct {
+		Names []string `xml:"OBJ_DSLINTERFACE_ID>Instance>ParaName"`
+		Values []string `xml:"OBJ_DSLINTERFACE_ID>Instance>ParaValue"`
+	}
+
+	var dslMetricsResponse dslMetricsStruct
+	err = xml.Unmarshal(dslMetricsData, &dslMetricsResponse)
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(dslMetricsResponse.Names); i++ {
+		value, err := strconv.ParseFloat(dslMetricsResponse.Values[i], 0)
+		if err != nil {
+			continue
+		}
+
+		metric, err := prometheus.NewConstMetric(dslDesc, prometheus.CounterValue, value, dslMetricsResponse.Names[i])
+		if err != nil {
+			return fmt.Errorf("error creating metric for %s: %s", dslDesc, err)
+		}
+
+		ch <- metric
+	}
+
+	ethernetPageRequest, err := c.client.Get(fmt.Sprintf(ethernetPageUrl, c.ip.String()))
 	if err != nil {
 		return err
 	}
@@ -177,6 +247,9 @@ func (c *experiav10Collector) scrape(ch chan<- prometheus.Metric) error {
 	if err != nil {
 		return err
 	}
+
+	defer ethernetPageRequest.Body.Close()
+	defer ethernetMetricsRequest.Body.Close()
 
 	ethernetMetricsData, err := ioutil.ReadAll(ethernetMetricsRequest.Body)
 	if err != nil {
@@ -194,19 +267,26 @@ func (c *experiav10Collector) scrape(ch chan<- prometheus.Metric) error {
 		return err
 	}
 
-	for i := 0; i < len(ethernetMetricsResponse.Names); i++ {
-		value, err := strconv.ParseFloat(ethernetMetricsResponse.Values[i], 0)
+	// Each LAN Instance has 6 fields
+	for i := 0; i < len(ethernetMetricsResponse.Names); i += 6 {
+		ifName := ethernetMetricsResponse.Values[i]
+		ifAlias := ethernetMetricsResponse.Values[i+1]
+
+		inBytes, err := strconv.ParseFloat(ethernetMetricsResponse.Values[i+2], 0)
+		if err != nil {
+			continue
+		}
+		outBytes, err := strconv.ParseFloat(ethernetMetricsResponse.Values[i+5], 0)
 		if err != nil {
 			continue
 		}
 
-		metric, err := prometheus.NewConstMetric(ethernetDesc, prometheus.CounterValue, value, ethernetMetricsResponse.Names[i])
-		if err != nil {
-			return fmt.Errorf("error creating metric for %s: %s", ethernetDesc, err)
-		}
+		ch <- prometheus.MustNewConstMetric(ifInOctets, prometheus.CounterValue, inBytes, ifName, ifAlias)
+		ch <- prometheus.MustNewConstMetric(ifOutOctets, prometheus.CounterValue, outBytes, ifName, ifAlias)
 
-		ch <- metric
 	}
+
+	c.client.CloseIdleConnections()
 
 	return nil
 }
