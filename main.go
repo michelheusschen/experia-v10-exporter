@@ -13,8 +13,14 @@ import (
 
 func main() {
 	listenAddr := os.Getenv("EXPERIA_V10_LISTEN_ADDR")
-	timeout, _ := time.ParseDuration(os.Getenv("EXPERIA_V10_TIMEOUT"))
+	timeout, err := time.ParseDuration(os.Getenv("EXPERIA_V10_TIMEOUT"))
+	if err != nil {
+		log.Fatalf("EXPERIA_V10_TIMEOUT invalid: %s", err)
+	}
 	ip := net.ParseIP(os.Getenv("EXPERIA_V10_ROUTER_IP"))
+	if ip == nil {
+		log.Fatal("EXPERIA_V10_ROUTER_IP invalid")
+	}
 	username := os.Getenv("EXPERIA_V10_ROUTER_USERNAME")
 	password := os.Getenv("EXPERIA_V10_ROUTER_PASSWORD")
 
