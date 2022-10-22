@@ -1,0 +1,13 @@
+version: "3"
+
+services:
+  experia-v10-exporter:
+    image: ghcr.io/michelheusschen/michelheusschen/experia-v10-exporter:master
+    environment:
+      - EXPERIA_V10_LISTEN_ADDR=:9684
+      - EXPERIA_V10_TIMEOUT=10s
+      - EXPERIA_V10_ROUTER_IP=192.168.2.254
+      - EXPERIA_V10_ROUTER_USERNAME
+      - EXPERIA_V10_ROUTER_PASSWORD
+    ports:
+      - 9684:9684
