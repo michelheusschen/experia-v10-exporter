@@ -175,7 +175,6 @@ func (c *experiav10Collector) logout(ch chan<- prometheus.Metric) error {
 	if err != nil {
 		return err
 	}
-
 	logoutRequest.Body.Close()
 
 	c.client.Jar, _ = cookiejar.New(nil)
@@ -224,7 +223,7 @@ func (c *experiav10Collector) scrape(ch chan<- prometheus.Metric) error {
 	if err != nil {
 		return err
 	}
-	defer ethernetPageRequest.Body.Close()
+	ethernetPageRequest.Body.Close()
 
 	ethernetMetricsRequest, err := c.client.Get(fmt.Sprintf(ethernetMetricsUrl, c.ip.String()))
 	if err != nil {
@@ -255,9 +254,12 @@ func (c *experiav10Collector) scrape(ch chan<- prometheus.Metric) error {
 			continue
 		}
 
-		ch <- prometheus.MustNewConstMetric(ifInOctets, prometheus.CounterValue, inBytes, ifName, ifAlias)
-		ch <- prometheus.MustNewConstMetric(ifOutOctets, prometheus.CounterValue, outBytes, ifName, ifAlias)
-
+		if inBytes > 0 {
+			ch <- prometheus.MustNewConstMetric(ifInOctets, prometheus.CounterValue, inBytes, ifName, ifAlias)
+		}
+		if outBytes > 0 {
+			ch <- prometheus.MustNewConstMetric(ifOutOctets, prometheus.CounterValue, outBytes, ifName, ifAlias)
+		}
 	}
 
 	return nil
