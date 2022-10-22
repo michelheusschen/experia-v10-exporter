@@ -2,7 +2,7 @@ version: "3"
 
 services:
   experia-v10-exporter:
-    image: ghcr.io/michelheusschen/michelheusschen/experia-v10-exporter:master
+    image: ghcr.io/michelheusschen/experia-v10-exporter:master
     environment:
       - EXPERIA_V10_LISTEN_ADDR=:9684
       - EXPERIA_V10_TIMEOUT=10s
