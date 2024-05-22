@@ -1,6 +1,6 @@
 # This is the first stage, for building things that will be required by the
 # final stage (notably the binary)
-FROM golang:1.19.2@sha256:0467d7d12d170ed8d998a2dae4a09aa13d0aa56e6d23c4ec2b1e4faacf86a813 AS builder
+FROM golang:1.22.3@sha256:f43c6f049f04cbbaeb28f0aad3eea15274a7d0a7899a617d0037aec48d7ab010 AS builder
 
 WORKDIR /go/src/app
 
